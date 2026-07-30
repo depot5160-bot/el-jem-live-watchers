@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>El Jem Live Watchers — Veille Citoyenne Participative</title>
+    <meta name="description" content="Application interactive de cartographie et de signalement en temps réel des pannes d'eau, d'électricité et d'internet à El Jem (Tunisie). Veille citoyenne participative." />
+    
+    <!-- PWA & Mobile Web App Meta -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0F172A" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="El Jem Watchers" />
+    <link rel="apple-touch-icon" href="/logo-192.png" />
+    <link rel="icon" type="image/png" href="/logo-192.png" />
+
+    <!-- Open Graph / Social Media Sharing Meta Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="El Jem Live Watchers" />
+    <meta property="og:title" content="El Jem Live Watchers — Veille Citoyenne Participative" />
+    <meta property="og:description" content="Plateforme citoyenne interactive de suivi en temps réel des pannes d'eau, d'électricité et d'internet à El Jem (Tunisie). Veille citoyenne participative." />
+    <meta property="og:image" content="/logo-512.png" />
+    <meta property="og:locale" content="fr_TN" />
+    <meta property="og:locale:alternate" content="ar_TN" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="El Jem Live Watchers — Veille Citoyenne Participative" />
+    <meta name="twitter:description" content="Plateforme citoyenne interactive de suivi en temps réel des pannes d'eau, d'électricité et d'internet à El Jem (Tunisie)." />
+    <meta name="twitter:image" content="/logo-512.png" />
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.log('SW registration failed: ', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
