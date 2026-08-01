@@ -1,6 +1,0 @@
-{
-  "name": "El Jem Live Watchers",
-  "description": "Application interactive de cartographie et de signalement en temps réel des coupures d'eau, d'électricité et d'internet à El Jem (Tunisie).",
-  "requestFramePermissions": ["geolocation"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
