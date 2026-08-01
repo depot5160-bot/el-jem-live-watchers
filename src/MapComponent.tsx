@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { Layers, Globe, Map as MapIcon, Satellite, Compass, Sparkles } from 'lucide-react';
-import { OutageReport, OutageType, Language } from '../types';
-import { EL_JEM_CENTER, EL_JEM_SECTORS, EL_JEM_LANDMARKS, LOGOS_IMAGES, TRANSLATIONS, TYPE_COLORS } from '../constants';
+import { OutageReport, OutageType, Language } from './types';
+import { EL_JEM_CENTER, EL_JEM_SECTORS, EL_JEM_LANDMARKS, LOGOS_IMAGES, TRANSLATIONS, TYPE_COLORS, getReportCompanyLogo } from './constants';
 
 interface MapComponentProps {
   approvedReports: OutageReport[];
@@ -12,6 +12,8 @@ interface MapComponentProps {
   activeSector?: string;
   currentLang: Language;
   isPickingManual: boolean;
+  mapMode?: 'satellite' | 'street';
+  onMapModeChange?: (mode: 'satellite' | 'street') => void;
   onCenterChange?: (lat: number, lng: number) => void;
   onSignalRestoration: (reportId: string) => void;
 }
@@ -24,6 +26,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   activeSector = 'all',
   currentLang,
   isPickingManual,
+  mapMode: controlledMapMode,
+  onMapModeChange,
   onCenterChange,
   onSignalRestoration
 }) => {
@@ -36,7 +40,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const satelliteLayerRef = useRef<L.TileLayer | null>(null);
   const satelliteLabelsRef = useRef<L.TileLayer | null>(null);
 
-  const [mapMode, setMapMode] = useState<'satellite' | 'street'>('satellite');
+  const [localMapMode, setLocalMapMode] = useState<'satellite' | 'street'>('satellite');
+  const mapMode = controlledMapMode ?? localMapMode;
+
+  const setMapMode = (mode: 'satellite' | 'street') => {
+    if (onMapModeChange) {
+      onMapModeChange(mode);
+    }
+    setLocalMapMode(mode);
+  };
+
   const [isTransitioning, setIsTransitioning] = useState(false);
   const prevSectorRef = useRef<string>(activeSector);
 
@@ -54,55 +67,75 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     return d.innerHTML;
   }
 
-  // Icon Generator with Restored & Top 5 Indicator support
+  // Icon Generator with Restored & Top 5 Indicator support.
+  // Design final: carré fond translucide + flou, bordure fine unique (pas de halo colore),
+  // triangle colore uniquement quand il n'y a pas de logo, clignotement applique
+  // directement sur le contour du marqueur pour les "5 derniers signalements"
+  // (jamais un anneau ou un point separe).
   function makeIcon(type: OutageType, isPending = false, logoUrl: string | null = null, isTop5 = false, restored = false) {
+    const whiteIconSvg = type === 'eau'
+      ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s6 7 6 12a6 6 0 0 1-12 0c0-5 6-12 6-12z"/></svg>`
+      : type === 'elec'
+      ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>`
+      : type === 'sonore'
+      ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
+      : `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>`;
+
+    const top5SquareClass = isTop5 ? 'top5-blink-square' : '';
+    const top5TriangleClass = isTop5 ? 'top5-blink-triangle' : '';
+
     if (restored) {
       return L.divIcon({
-        className: isTop5 ? 'beacon-top5-container' : '',
+        className: '',
         html: `
-          <div style="position:relative; width:38px; height:38px; display:flex; align-items:center; justify-content:center;">
-            <div style="width:36px; height:36px; border-radius:50%; background:#0B132B; border:3px solid #10B981; box-shadow:0 0 16px #10B981; display:flex; align-items:center; justify-content:center; overflow:hidden;">
-              ${logoUrl ? `<img src="${logoUrl}" style="width:22px;height:22px;object-fit:contain;" alt="">` : `<span style="font-size:16px;">✅</span>`}
+          <div style="position:relative; width:40px; height:40px; display:flex; align-items:center; justify-content:center;">
+            <div class="${top5SquareClass}" style="width:38px; height:38px; border-radius:8px; background:rgba(15,23,42,0.35); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); border:1px solid rgba(51, 65, 85, 0.7); display:flex; align-items:center; justify-content:center; overflow:hidden; padding:4px;">
+              ${logoUrl ? `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;display:block;" alt="">` : `<span style="font-size:16px;">✅</span>`}
             </div>
-            <div style="position:absolute; bottom:-2px; right:-2px; background:#10B981; color:#FFF; font-size:10px; font-weight:900; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #FFF;">✓</div>
+            <div style="position:absolute; bottom:-2px; right:-2px; background:#10B981; color:#FFF; font-size:11px; font-weight:900; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #FFF;">✓</div>
           </div>
         `,
-        iconSize: [38, 38],
-        iconAnchor: [19, 38],
-        popupAnchor: [0, -38],
-        tooltipAnchor: [0, -38]
-      });
-    }
-
-    if (isPending) {
-      return L.divIcon({
-        className: isTop5 ? 'beacon-top5-container' : '',
-        html: `${isTop5 ? '<div class="beacon-top5-ring"></div>' : ''}<div class="pending-marker-anim ${isTop5 ? 'beacon-top5' : ''}" style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:${TYPE_COLORS[type]};transform:rotate(-45deg);border:3px solid #FFF;box-shadow:0 0 16px ${TYPE_COLORS[type]};display:flex;align-items:center;justify-content:center;"></div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 28],
-        popupAnchor: [0, -28],
-        tooltipAnchor: [0, -28]
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+        tooltipAnchor: [0, -20]
       });
     }
 
     if (logoUrl) {
+      const animClass = isPending ? 'pending-marker-anim' : '';
+
       return L.divIcon({
-        className: isTop5 ? 'beacon-top5-container' : '',
-        html: `${isTop5 ? '<div class="beacon-top5-ring"></div>' : ''}<div class="${isTop5 ? 'beacon-top5' : ''}" style="width:34px;height:34px;border-radius:50%;background:#0F172A;box-shadow:0 4px 16px ${TYPE_COLORS[type]};border:3px solid ${TYPE_COLORS[type]};display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;"><img src="${logoUrl}" style="width:22px;height:22px;object-fit:contain;display:block;" alt=""></div>`,
-        iconSize: [34, 34],
-        iconAnchor: [17, 34],
-        popupAnchor: [0, -34],
-        tooltipAnchor: [0, -34]
+        className: '',
+        html: `<div style="position:relative;width:38px;height:38px;">
+          <div class="${animClass} ${top5SquareClass}" style="width:38px;height:38px;border-radius:8px;background:rgba(15,23,42,0.35);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid rgba(51,65,85,0.7);display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;">
+            <img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;display:block;" alt="">
+          </div>
+        </div>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19],
+        popupAnchor: [0, -19],
+        tooltipAnchor: [0, -19]
       });
     }
 
+    // Pas de logo: forme triangle avec bordures CSS, seule couleur du type restante
+    const animClass = isPending ? 'pending-marker-anim' : '';
+
     return L.divIcon({
-      className: isTop5 ? 'beacon-top5-container' : '',
-      html: `${isTop5 ? '<div class="beacon-top5-ring"></div>' : ''}<div class="${isTop5 ? 'beacon-top5' : ''}" style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:${TYPE_COLORS[type]};transform:rotate(-45deg);box-shadow:0 4px 16px ${TYPE_COLORS[type]};border:2px solid #FFF;"></div>`,
-      iconSize: [26, 26],
-      iconAnchor: [13, 26],
-      popupAnchor: [0, -26],
-      tooltipAnchor: [0, -26]
+      className: '',
+      html: `
+        <div class="${animClass} ${top5TriangleClass}" style="position:relative; width:30px; height:26px; display:flex; align-items:center; justify-content:center;">
+          <div style="width:0; height:0; border-left:15px solid transparent; border-right:15px solid transparent; border-bottom:26px solid ${TYPE_COLORS[type]}; position:absolute; top:0; left:0;"></div>
+          <div style="position:absolute; top:7px; left:50%; transform:translateX(-50%); display:flex; align-items:center; justify-content:center;">
+            ${whiteIconSvg}
+          </div>
+        </div>
+      `,
+      iconSize: [30, 26],
+      iconAnchor: [15, 13],
+      popupAnchor: [0, -13],
+      tooltipAnchor: [0, -13]
     });
   }
 
@@ -146,7 +179,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
     approvedLayerRef.current = L.layerGroup().addTo(map);
     pendingLayerRef.current = L.layerGroup();
-    
+
     // Landmarks Reference Layer
     const landmarksGroup = L.layerGroup().addTo(map);
     landmarksLayerRef.current = landmarksGroup;
@@ -292,32 +325,23 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     const allReports = [...approvedReports, ...pendingReports].sort((a, b) => b.createdAt - a.createdAt);
     const top5Ids = new Set(allReports.slice(0, 5).map(r => r.id));
 
-    const filteredApproved = activeFilter 
-      ? approvedReports.filter(r => r.type === activeFilter) 
+    const filteredApproved = activeFilter
+      ? approvedReports.filter(r => r.type === activeFilter)
       : approvedReports;
 
-    const filteredPending = activeFilter 
-      ? pendingReports.filter(r => r.type === activeFilter) 
+    const filteredPending = activeFilter
+      ? pendingReports.filter(r => r.type === activeFilter)
       : pendingReports;
 
     const t = TRANSLATIONS[currentLang];
 
     filteredApproved.forEach(r => {
-      let logoUrl: string | null = null;
-      if (r.type === 'eau') logoUrl = LOGOS_IMAGES.sonded;
-      else if (r.type === 'elec') logoUrl = LOGOS_IMAGES.steg;
-      else if (r.type === 'net' && r.isp) {
-        if (r.isp.includes('Tunisie Telecom')) logoUrl = LOGOS_IMAGES.tt;
-        else if (r.isp.includes('Orange')) logoUrl = LOGOS_IMAGES.orange;
-        else if (r.isp.includes('Ooredoo')) logoUrl = LOGOS_IMAGES.ooredoo;
-        else logoUrl = LOGOS_IMAGES.topnet;
-      }
-
+      const logoUrl = getReportCompanyLogo(r);
       const isTop5 = top5Ids.has(r.id);
       const isRestored = Boolean(r.restored);
 
-      const marker = L.marker([r.lat, r.lng], { 
-        icon: makeIcon(r.type, false, logoUrl, isTop5, isRestored) 
+      const marker = L.marker([r.lat, r.lng], {
+        icon: makeIcon(r.type, false, logoUrl, isTop5, isRestored)
       });
 
       // Strict 24-hour time formatting
@@ -328,19 +352,13 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         hour: '2-digit', minute: '2-digit', hour12: false
       });
 
-      const typeKey = r.type === 'eau' ? 'popupWater' : (r.type === 'elec' ? 'popupElec' : 'popupNet');
+      const typeKey = r.type === 'eau' ? 'popupWater' : (r.type === 'elec' ? 'popupElec' : (r.type === 'net' ? 'popupNet' : 'popupSonore'));
 
       // Sector lookup
       const secObj = EL_JEM_SECTORS.find(s => s.id === r.sector);
       const sectorName = secObj ? (currentLang === 'ar' ? secObj.ar : secObj.fr) : null;
 
-      let logoHtml = '';
-      if (r.type === 'eau') logoHtml = `<div class="tactical-popup-logo"><img src="${LOGOS_IMAGES.sonded}" alt="SONEDE"></div>`;
-      else if (r.type === 'elec') logoHtml = `<div class="tactical-popup-logo"><img src="${LOGOS_IMAGES.steg}" alt="STEG"></div>`;
-      else if (r.type === 'net' && r.isp) {
-        const ispKey = r.isp.includes('Tunisie Telecom') ? 'tt' : r.isp.includes('Orange') ? 'orange' : r.isp.includes('Ooredoo') ? 'ooredoo' : 'topnet';
-        logoHtml = `<div class="tactical-popup-logo"><img src="${LOGOS_IMAGES[ispKey]}" alt="${escapeHtml(r.isp)}"></div>`;
-      }
+      const logoHtml = `<div class="tactical-popup-logo"><img src="${logoUrl}" alt="Logo"></div>`;
 
       let content = `<div class="tactical-popup-card">`;
       content += `<div class="tactical-popup-header">` + logoHtml + `<div class="tactical-popup-title" style="color:${isRestored ? '#10B981' : TYPE_COLORS[r.type]}">${t[typeKey]}</div></div>`;
@@ -353,14 +371,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       }
 
       if (sectorName) content += `<div class="tactical-sector-badge">📍 ${escapeHtml(sectorName)}</div>`;
-      if (r.isp) content += `<div class="tactical-isp-tag">FAI: ${escapeHtml(r.isp)}</div>`;
+      if (r.isp) content += `<div class="tactical-isp-tag">Société: ${escapeHtml(r.isp)}</div>`;
       if (r.note) content += `<div class="tactical-popup-note">${escapeHtml(r.note)}</div>`;
       content += `<div class="tactical-popup-time">🕒 ${t.signalTime.replace('{time}', time24)}</div>`;
 
       if (!isRestored) {
         content += `
           <div class="tactical-popup-action">
-            <button 
+            <button
               onclick="window.triggerSignalRestoration('${r.id}')"
               class="tactical-restore-btn"
             >
@@ -397,11 +415,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     });
 
     filteredPending.forEach(r => {
+      const logoUrl = getReportCompanyLogo(r);
       const isTop5 = top5Ids.has(r.id);
       const isRestored = Boolean(r.restored);
 
-      const marker = L.marker([r.lat, r.lng], { 
-        icon: makeIcon(r.type, true, null, isTop5, isRestored) 
+      const marker = L.marker([r.lat, r.lng], {
+        icon: makeIcon(r.type, true, logoUrl, isTop5, isRestored)
       });
 
       const time24 = new Date(r.createdAt).toLocaleString(currentLang === 'ar' ? 'ar-TN' : 'fr-FR', {
@@ -411,18 +430,20 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         hour: '2-digit', minute: '2-digit', hour12: false
       });
 
-      const typeKey = r.type === 'eau' ? 'popupWater' : (r.type === 'elec' ? 'popupElec' : 'popupNet');
+      const typeKey = r.type === 'eau' ? 'popupWater' : (r.type === 'elec' ? 'popupElec' : (r.type === 'net' ? 'popupNet' : 'popupSonore'));
 
       const secObj = EL_JEM_SECTORS.find(s => s.id === r.sector);
       const sectorName = secObj ? (currentLang === 'ar' ? secObj.ar : secObj.fr) : null;
 
+      const logoHtml = `<div class="tactical-popup-logo"><img src="${logoUrl}" alt="Logo"></div>`;
+
       let content = `<div class="tactical-popup-card">`;
-      content += `<div class="tactical-popup-title" style="color:${TYPE_COLORS[r.type]}">${t[typeKey]}</div>`;
+      content += `<div class="tactical-popup-header">` + logoHtml + `<div class="tactical-popup-title" style="color:${TYPE_COLORS[r.type]}">${t[typeKey]}</div></div>`;
       content += `<div class="tactical-pending-tag">${t.popupPending}</div>`;
 
       if (isTop5) content += `<div class="tactical-badge-top5">🚨 5 DERNIERS SIGNALEMENTS</div>`;
       if (sectorName) content += `<div class="tactical-sector-badge">📍 ${escapeHtml(sectorName)}</div>`;
-      if (r.isp) content += `<div class="tactical-isp-tag">FAI: ${escapeHtml(r.isp)}</div>`;
+      if (r.isp) content += `<div class="tactical-isp-tag">Société: ${escapeHtml(r.isp)}</div>`;
       if (r.note) content += `<div class="tactical-popup-note">${escapeHtml(r.note)}</div>`;
       content += `<div class="tactical-popup-time">🕒 ${t.signalTime.replace('{time}', time24)}</div>`;
       content += `</div>`;
@@ -456,9 +477,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       <div id="map" ref={mapContainerRef} className="w-full h-full" />
       <div className={`map-sector-zoom-overlay ${isTransitioning ? 'active' : ''}`} />
 
-      {/* Satellite / Street Map Layer Switcher Premium SVG Floating Widget */}
-      <div 
-        className="absolute bottom-16 left-4 z-[400] flex items-center p-1.5 rounded-2xl bg-slate-950/90 border border-slate-700/80 shadow-2xl backdrop-blur-xl gap-1.5"
+      {/* Satellite / Street Map Layer Switcher Floating Widget (Bottom Right) */}
+      <div
+        className="absolute bottom-20 right-4 sm:bottom-6 sm:right-16 z-[400] flex items-center p-1 rounded-xl bg-slate-950/90 border border-slate-700/80 shadow-2xl backdrop-blur-xl gap-1"
         dir={isAr ? 'rtl' : 'ltr'}
       >
         <button
@@ -467,18 +488,15 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             triggerHaptic(15);
             setMapMode('satellite');
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
             mapMode === 'satellite'
-              ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-lg shadow-rose-500/30 border border-amber-300/40'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
           }`}
-          title={isAr ? 'عرض القمر الصناعي بدقة عالية HD' : 'Vue Satellite HD'}
+          title={isAr ? 'قمر صناعي' : 'Satellite'}
         >
-          <Satellite className={`w-4 h-4 shrink-0 ${mapMode === 'satellite' ? 'text-amber-200 animate-pulse' : 'text-slate-400'}`} />
-          <span className="tracking-wide">{isAr ? 'قمر صناعي HD' : 'Satellite HD'}</span>
-          {mapMode === 'satellite' && (
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-          )}
+          <Satellite className={`w-3.5 h-3.5 shrink-0 ${mapMode === 'satellite' ? 'text-amber-400' : 'text-slate-400'}`} />
+          <span>{isAr ? 'قمر صناعي' : 'Satellite'}</span>
         </button>
 
         <button
@@ -487,21 +505,17 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             triggerHaptic(15);
             setMapMode('street');
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
             mapMode === 'street'
-              ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-500/30 border border-cyan-300/40'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
           }`}
-          title={isAr ? 'عرض خريطة الشوارع والحي' : 'Carte Routière'}
+          title={isAr ? 'خريطة الشوارع' : 'Carte & Rues'}
         >
-          <MapIcon className={`w-4 h-4 shrink-0 ${mapMode === 'street' ? 'text-cyan-200 animate-pulse' : 'text-slate-400'}`} />
-          <span className="tracking-wide">{isAr ? 'خريطة الشوارع' : 'Carte'}</span>
-          {mapMode === 'street' && (
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-ping shrink-0" />
-          )}
+          <MapIcon className={`w-3.5 h-3.5 shrink-0 ${mapMode === 'street' ? 'text-cyan-400' : 'text-slate-400'}`} />
+          <span>{isAr ? 'خريطة الشوارع' : 'Carte & Rues'}</span>
         </button>
       </div>
     </div>
   );
 };
-
